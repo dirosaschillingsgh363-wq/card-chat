@@ -1048,11 +1048,39 @@ function setupCardChat() {
         }, spd.idleMs);
     }
 
+    // 夜间模式颜色调整：降低亮度和饱和度
+    function _adjustColorForNight(color) {
+        if (!color) return color;
+        // 解析hex颜色
+        let hex = color.replace('#', '');
+        if (hex.length === 3) hex = hex.split('').map(c => c + c).join('');
+        const r = parseInt(hex.substr(0, 2), 16);
+        const g = parseInt(hex.substr(2, 2), 16);
+        const b = parseInt(hex.substr(4, 2), 16);
+
+        // 转换为HSL
+        const max = Math.max(r, g, b) / 255;
+        const min = Math.min(r, g, b) / 255;
+        const l = (max + min) / 2;
+
+        // 降低亮度：如果亮度>0.3，降低到0.2-0.3之间
+        const newL = l > 0.3 ? Math.max(0.2, l * 0.5) : l;
+
+        // 简化：直接降低RGB值
+        const factor = newL / Math.max(l, 0.01);
+        const newR = Math.round(r * factor);
+        const newG = Math.round(g * factor);
+        const newB = Math.round(b * factor);
+
+        return `rgb(${newR}, ${newG}, ${newB})`;
+    }
+
     function renderMessages(conv) {
         const el = document.getElementById('cc-messages');
         if (!el) return;
         const avatar = conv.avatar || defaultAvatar(conv.name);
         const isGroup = (conv.characterIds || []).length > 0;
+        const isNightMode = getCardChatTheme().nightMode;
 
         let html = '';
         conv.messages.forEach(msg => {
@@ -1067,7 +1095,10 @@ function setupCardChat() {
                 const ur = getUserRoleById(msg.userRoleId);
                 if (ur) {
                     userAvatar = `<img class="cc-msg-avatar" src="${esc(ur.avatar || defaultAvatar(ur.name))}" alt="">`;
-                    if (ur.bubbleColor) bubbleStyle = ` style="background:${ur.bubbleColor}"`;
+                    if (ur.bubbleColor) {
+                        const color = isNightMode ? _adjustColorForNight(ur.bubbleColor) : ur.bubbleColor;
+                        bubbleStyle = ` style="background:${color}"`;
+                    }
                 }
             }
 
@@ -1076,7 +1107,10 @@ function setupCardChat() {
                 const ch = getCharacterById(msg.characterId);
                 if (ch) {
                     charAvatar = ch.avatar || defaultAvatar(ch.name);
-                    if (ch.bubbleColor) bubbleStyle = ` style="background:${ch.bubbleColor}"`;
+                    if (ch.bubbleColor) {
+                        const color = isNightMode ? _adjustColorForNight(ch.bubbleColor) : ch.bubbleColor;
+                        bubbleStyle = ` style="background:${color}"`;
+                    }
                     charNameHtml = `<div class="cc-msg-char-name" style="font-size:11px;color:#999;padding-left:44px;margin-bottom:2px;">${esc(ch.name)}</div>`;
                 }
             }
@@ -1253,13 +1287,17 @@ function setupCardChat() {
 
     function appendCardMessage(msgEl, conv, text, characterId) {
         const isGroup = (conv.characterIds || []).length > 0;
+        const isNightMode = getCardChatTheme().nightMode;
         let avatarSrc, charNameHtml = '', bubbleStyle = '';
         if (isGroup && characterId) {
             const ch = getCharacterById(characterId);
             avatarSrc = ch ? esc(ch.avatar || defaultAvatar(ch.name)) : esc(defaultAvatar('?'));
             if (ch) {
                 charNameHtml = `<div class="cc-msg-char-name" style="font-size:11px;color:#999;padding-left:44px;margin-bottom:2px;">${esc(ch.name)}</div>`;
-                if (ch.bubbleColor) bubbleStyle = ` style="background:${ch.bubbleColor}"`;
+                if (ch.bubbleColor) {
+                    const color = isNightMode ? _adjustColorForNight(ch.bubbleColor) : ch.bubbleColor;
+                    bubbleStyle = ` style="background:${color}"`;
+                }
             }
         } else {
             avatarSrc = esc(conv.avatar || defaultAvatar(conv.name));
@@ -3644,12 +3682,26 @@ function setupCardChat() {
             });
 
             const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `字卡导出_${now.toISOString().slice(0,10)}.md`;
-            a.click();
-            URL.revokeObjectURL(url);
+            const filename = `字卡导出_${now.toISOString().slice(0,10)}.md`;
+
+            // Android环境使用JSBridge下载
+            if (typeof AndroidDownload !== 'undefined' && AndroidDownload.saveFile) {
+                const reader = new FileReader();
+                reader.onload = function() {
+                    const base64 = reader.result.split(',')[1]; // 移除 "data:text/markdown;base64," 前缀
+                    AndroidDownload.saveFile(filename, base64);
+                };
+                reader.readAsDataURL(blob);
+            } else {
+                // 浏览器环境使用Blob URL
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                a.click();
+                URL.revokeObjectURL(url);
+            }
+
             ov.remove();
             if (typeof showToast === 'function') showToast('导出成功');
         });
@@ -4229,6 +4281,12 @@ function setupCardChat() {
         });
         document.querySelector('#card-chat-settings-screen .back-btn')?.addEventListener('click', () => {
             if (typeof switchScreen === 'function') switchScreen('card-chat-room-screen');
+        });
+        document.querySelector('#card-chat-global-screen .back-btn')?.addEventListener('click', () => {
+            _globalSelectMode = false;
+            _globalSelected.clear();
+            if (typeof switchScreen === 'function') switchScreen('card-chat-screen');
+            renderConvList();
         });
     }
 
