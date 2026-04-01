@@ -11,6 +11,41 @@ function setupCardChat() {
     const fmtTime = ts => { const d = new Date(ts); return `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`; };
     const fmtDate = ts => { const d = new Date(ts); return `${d.getMonth() + 1}/${d.getDate()}`; };
 
+    // 根据气泡背景色生成同色系文字颜色（深色调）
+    function _ccGetTintedText(color) {
+        if (!color) return null;
+        let r, g, b;
+        if (color.startsWith('#')) {
+            let hex = color.replace('#', '');
+            if (hex.length === 3) hex = hex.split('').map(c => c + c).join('');
+            r = parseInt(hex.slice(0, 2), 16); g = parseInt(hex.slice(2, 4), 16); b = parseInt(hex.slice(4, 6), 16);
+        } else if (color.startsWith('rgb')) {
+            const m = color.match(/[\d.]+/g);
+            if (m && m.length >= 3) { r = parseInt(m[0]); g = parseInt(m[1]); b = parseInt(m[2]); }
+            else return null;
+        } else return null;
+        // 将颜色压暗到 ~40% 亮度，保持色相
+        const darken = v => Math.round(v * 0.4);
+        return `#${darken(r).toString(16).padStart(2,'0')}${darken(g).toString(16).padStart(2,'0')}${darken(b).toString(16).padStart(2,'0')}`;
+    }
+
+    // 夜间模式下将自定义气泡颜色压暗（乘以 0.35，保持色相）
+    function _ccNightBubbleColor(color) {
+        if (!color) return null;
+        let r, g, b;
+        if (color.startsWith('#')) {
+            let hex = color.replace('#', '');
+            if (hex.length === 3) hex = hex.split('').map(c => c + c).join('');
+            r = parseInt(hex.slice(0, 2), 16); g = parseInt(hex.slice(2, 4), 16); b = parseInt(hex.slice(4, 6), 16);
+        } else if (color.startsWith('rgb')) {
+            const m = color.match(/[\d.]+/g);
+            if (m && m.length >= 3) { r = parseInt(m[0]); g = parseInt(m[1]); b = parseInt(m[2]); }
+            else return null;
+        } else return null;
+        const d = v => Math.round(v * 0.35);
+        return `rgb(${d(r)},${d(g)},${d(b)})`;
+    }
+
     const defaultAvatar = (name) => {
         const c = name ? name[0] : '?';
         return `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="64" height="64" rx="32" fill="#a8d8ea"/><text x="32" y="38" text-anchor="middle" font-size="24" fill="#fff" font-family="sans-serif">${c}</text></svg>`)}`;
@@ -925,6 +960,8 @@ function setupCardChat() {
         _updateCrossStyleMenuLabel();
         _updateMinimalMenuLabel();
         _updateNightMenuLabel();
+        _updateShowNameMenuLabel();
+        _updateAutoTextMenuLabel();
         _applyMinimalMode(conv);
 
         // 应用对话独立主题
@@ -977,6 +1014,22 @@ function setupCardChat() {
         if (el) el.textContent = label;
         const el2 = document.getElementById('cc-menu-night');
         if (el2) el2.textContent = label;
+    }
+
+    function _updateShowNameMenuLabel() {
+        const data = getData();
+        const conv = data.conversations.find(c => c.id === _currentConvId);
+        const el = document.getElementById('cc-room-menu-showname');
+        if (!el || !conv) return;
+        el.textContent = conv.showRoleName ? '▤ 显示角色名  开' : '▤ 显示角色名  关';
+    }
+
+    function _updateAutoTextMenuLabel() {
+        const data = getData();
+        const conv = data.conversations.find(c => c.id === _currentConvId);
+        const el = document.getElementById('cc-room-menu-autotext');
+        if (!el || !conv) return;
+        el.textContent = conv.autoTextColor ? '◐ 文字跟随底色  开' : '◐ 文字跟随底色  关';
     }
 
     function _startRandomBubble() {
@@ -1048,31 +1101,125 @@ function setupCardChat() {
         }, spd.idleMs);
     }
 
-    // 夜间模式颜色调整：降低亮度和饱和度
-    function _adjustColorForNight(color) {
-        if (!color) return color;
-        // 解析hex颜色
-        let hex = color.replace('#', '');
-        if (hex.length === 3) hex = hex.split('').map(c => c + c).join('');
-        const r = parseInt(hex.substr(0, 2), 16);
-        const g = parseInt(hex.substr(2, 2), 16);
-        const b = parseInt(hex.substr(4, 2), 16);
+    // ===== 消息编辑功能 =====
+    function showEditMsgModal(msgIdx) {
+        const data = getData();
+        const conv = data.conversations.find(c => c.id === _currentConvId);
+        if (!conv) return;
+        const msg = conv.messages[msgIdx];
+        if (!msg) return;
 
-        // 转换为HSL
-        const max = Math.max(r, g, b) / 255;
-        const min = Math.min(r, g, b) / 255;
-        const l = (max + min) / 2;
+        const overlay = document.createElement('div');
+        overlay.className = 'cc-edit-modal-overlay';
+        const modal = document.createElement('div');
+        modal.className = 'cc-edit-modal';
 
-        // 降低亮度：如果亮度>0.3，降低到0.2-0.3之间
-        const newL = l > 0.3 ? Math.max(0.2, l * 0.5) : l;
+        const tsDate = new Date(msg.timestamp).toISOString().slice(0, 10);
+        const tsTime = new Date(msg.timestamp).toISOString().slice(11, 16);
 
-        // 简化：直接降低RGB值
-        const factor = newL / Math.max(l, 0.01);
-        const newR = Math.round(r * factor);
-        const newG = Math.round(g * factor);
-        const newB = Math.round(b * factor);
+        modal.innerHTML = `
+            <h3>编辑消息</h3>
+            <button class="cc-modal-close" onclick="this.closest('.cc-edit-modal-overlay').remove()">&times;</button>
+            <div class="cc-form-group">
+                <label class="cc-form-label">内容</label>
+                <textarea class="cc-form-textarea" id="cc-edit-content">${esc(msg.content)}</textarea>
+            </div>
+            <div class="cc-edit-msg-row">
+                <label>日期</label>
+                <input type="date" id="cc-edit-date" value="${tsDate}">
+            </div>
+            <div class="cc-edit-msg-row">
+                <label>时间</label>
+                <input type="time" id="cc-edit-time" value="${tsTime}">
+            </div>
+            <button class="cc-btn-primary" id="cc-edit-save">保存</button>
+            <button class="cc-btn-danger" id="cc-edit-delete">删除此消息</button>
+        `;
 
-        return `rgb(${newR}, ${newG}, ${newB})`;
+        overlay.appendChild(modal);
+        overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+        document.body.appendChild(overlay);
+
+        modal.querySelector('#cc-edit-save').addEventListener('click', () => {
+            const content = modal.querySelector('#cc-edit-content').value.trim();
+            if (!content) { alert('内容不能为空'); return; }
+            msg.content = content;
+            const dateVal = modal.querySelector('#cc-edit-date').value;
+            const timeVal = modal.querySelector('#cc-edit-time').value;
+            if (dateVal && timeVal) msg.timestamp = new Date(`${dateVal}T${timeVal}`).getTime();
+            conv.updatedAt = Date.now();
+            if (typeof saveData === 'function') saveData();
+            overlay.remove();
+            renderMessages(conv);
+        });
+
+        modal.querySelector('#cc-edit-delete')?.addEventListener('click', () => {
+            if (confirm('确定删除此消息？')) {
+                deleteMessage(msgIdx);
+                overlay.remove();
+            }
+        });
+    }
+
+    function moveMessage(msgIdx, direction) {
+        const data = getData();
+        const conv = data.conversations.find(c => c.id === _currentConvId);
+        if (!conv) return;
+        const newIdx = msgIdx + direction;
+        if (newIdx < 0 || newIdx >= conv.messages.length) return;
+        const temp = conv.messages[msgIdx];
+        conv.messages[msgIdx] = conv.messages[newIdx];
+        conv.messages[newIdx] = temp;
+        if (typeof saveData === 'function') saveData();
+        renderMessages(conv);
+    }
+
+    function deleteMessage(msgIdx) {
+        const data = getData();
+        const conv = data.conversations.find(c => c.id === _currentConvId);
+        if (!conv) return;
+        conv.messages.splice(msgIdx, 1);
+        conv.updatedAt = Date.now();
+        if (typeof saveData === 'function') saveData();
+        renderMessages(conv);
+    }
+
+    function showMsgActionBar(msgIdx, wrapper) {
+        // 移除已有的操作条
+        document.querySelectorAll('.cc-msg-action-bar').forEach(el => el.remove());
+
+        const bar = document.createElement('div');
+        bar.className = 'cc-msg-action-bar';
+        bar.innerHTML = `
+            <button class="cc-action-btn" data-action="edit" title="编辑">✏️</button>
+            <button class="cc-action-btn" data-action="up" title="上移">↑</button>
+            <button class="cc-action-btn" data-action="down" title="下移">↓</button>
+            <button class="cc-action-btn cc-action-delete" data-action="delete" title="删除">🗑️</button>
+        `;
+
+        bar.addEventListener('click', e => {
+            const action = e.target.closest('button')?.dataset.action;
+            if (!action) return;
+            bar.remove();
+
+            if (action === 'edit') showEditMsgModal(msgIdx);
+            else if (action === 'up') moveMessage(msgIdx, -1);
+            else if (action === 'down') moveMessage(msgIdx, 1);
+            else if (action === 'delete') {
+                if (confirm('确定删除此消息？')) deleteMessage(msgIdx);
+            }
+        });
+
+        wrapper.appendChild(bar);
+
+        // 点击其他地方关闭
+        setTimeout(() => {
+            const dismiss = () => {
+                bar.remove();
+                document.removeEventListener('click', dismiss);
+            };
+            document.addEventListener('click', dismiss);
+        }, 50);
     }
 
     function renderMessages(conv) {
@@ -1080,26 +1227,31 @@ function setupCardChat() {
         if (!el) return;
         const avatar = conv.avatar || defaultAvatar(conv.name);
         const isGroup = (conv.characterIds || []).length > 0;
-        const isNightMode = getCardChatTheme().nightMode;
+        const nightMode = !!getCardChatTheme().nightMode;
+        const showName = !!conv.showRoleName;
+        const autoText = !!conv.autoTextColor;
 
         let html = '';
         conv.messages.forEach(msg => {
             const isSent = msg.role === 'user';
             const wClass = isSent ? 'sent' : 'received';
             let userAvatar = '';
-            let bubbleStyle = '';
+            let bubbleColor = '';
+            let textColor = '';
             let charNameHtml = '';
             let charAvatar = avatar;
+            let roleName = '';
 
             if (isSent && msg.userRoleId) {
                 const ur = getUserRoleById(msg.userRoleId);
                 if (ur) {
                     userAvatar = `<img class="cc-msg-avatar" src="${esc(ur.avatar || defaultAvatar(ur.name))}" alt="">`;
-                    if (ur.bubbleColor) {
-                        const color = isNightMode ? _adjustColorForNight(ur.bubbleColor) : ur.bubbleColor;
-                        bubbleStyle = ` style="background:${color}"`;
-                    }
+                    if (ur.bubbleColor) bubbleColor = ur.bubbleColor;
+                    if (showName) roleName = ur.name;
                 }
+            } else if (isSent && showName) {
+                const mainUr = getMainUserRole();
+                if (mainUr) roleName = mainUr.name;
             }
 
             // 群聊角色：显示角色头像+名字+气泡色
@@ -1107,12 +1259,30 @@ function setupCardChat() {
                 const ch = getCharacterById(msg.characterId);
                 if (ch) {
                     charAvatar = ch.avatar || defaultAvatar(ch.name);
-                    if (ch.bubbleColor) {
-                        const color = isNightMode ? _adjustColorForNight(ch.bubbleColor) : ch.bubbleColor;
-                        bubbleStyle = ` style="background:${color}"`;
-                    }
+                    if (ch.bubbleColor) bubbleColor = ch.bubbleColor;
                     charNameHtml = `<div class="cc-msg-char-name" style="font-size:11px;color:#999;padding-left:44px;margin-bottom:2px;">${esc(ch.name)}</div>`;
                 }
+            } else if (!isSent && showName) {
+                roleName = conv.name;
+            }
+
+            // 非群聊对话中也显示角色名
+            if (showName && roleName && !charNameHtml) {
+                const nameAlign = isSent ? 'text-align:right;padding-right:44px;' : 'padding-left:44px;';
+                charNameHtml = `<div class="cc-msg-char-name" style="font-size:11px;color:#999;${nameAlign}margin-bottom:2px;">${esc(roleName)}</div>`;
+            }
+
+            // 构建 bubble 的 style
+            let bubbleStyle = '';
+            if (bubbleColor) {
+                const effectiveBg = nightMode ? (_ccNightBubbleColor(bubbleColor) || bubbleColor) : bubbleColor;
+                textColor = autoText ? _ccGetTintedText(effectiveBg) : (nightMode ? '#ccc' : '');
+                bubbleStyle = ` style="background:${effectiveBg};${textColor ? 'color:' + textColor + ';' : ''}"`;
+            } else if (autoText) {
+                // 无自定义气泡色时，用CSS默认色计算对比文字
+                const defaultBg = isSent ? '#CEE4F1' : '#ffffff';
+                textColor = _ccGetTintedText(defaultBg) || '';
+                if (textColor) bubbleStyle = ` style="color:${textColor};"`;
             }
 
             html += `<div class="cc-msg-wrapper ${wClass}" data-msgid="${msg.id}">
@@ -1127,6 +1297,27 @@ function setupCardChat() {
 
         el.innerHTML = html;
         el.scrollTop = el.scrollHeight;
+
+        // 添加长按编辑功能
+        el.querySelectorAll('.cc-msg-wrapper').forEach((wrapper, idx) => {
+            let pressTimer = null;
+            const startPress = (e) => {
+                pressTimer = setTimeout(() => {
+                    showMsgActionBar(idx, wrapper);
+                }, 500); // 长按500ms触发
+            };
+            const cancelPress = () => {
+                if (pressTimer) {
+                    clearTimeout(pressTimer);
+                    pressTimer = null;
+                }
+            };
+
+            wrapper.addEventListener('pointerdown', startPress);
+            wrapper.addEventListener('pointerup', cancelPress);
+            wrapper.addEventListener('pointercancel', cancelPress);
+            wrapper.addEventListener('pointermove', cancelPress);
+        });
     }
 
     function sendMessage() {
@@ -1215,41 +1406,53 @@ function setupCardChat() {
         }
 
         if (isGroup) {
-            // 群聊：每个角色按顺序各回一条
+            // 群聊：每个角色按顺序各回1~5条
             const charIds = [...conv.characterIds];
             let ci = 0;
-            function nextChar() {
-                if (ci >= charIds.length) {
-                    if (typeof saveData === 'function') saveData();
-                    if (typeof onDone === 'function') onDone();
-                    return;
+            let charMsgLeft = 0; // 当前角色还需回复几条
+            let currentCharId = null;
+            let currentCh = null;
+            let currentAvatar = '';
+
+            function nextGroupMsg() {
+                // 当前角色消息发完，切到下一个角色
+                if (charMsgLeft <= 0) {
+                    if (ci >= charIds.length) {
+                        if (typeof saveData === 'function') saveData();
+                        if (typeof onDone === 'function') onDone();
+                        return;
+                    }
+                    currentCharId = charIds[ci];
+                    currentCh = getCharacterById(currentCharId);
+                    currentAvatar = currentCh ? (currentCh.avatar || defaultAvatar(currentCh.name)) : defaultAvatar('?');
+                    charMsgLeft = 1 + Math.floor(Math.random() * 5); // 1~5条
+                    ci++;
                 }
-                const charId = charIds[ci];
-                const ch = getCharacterById(charId);
-                const charAvatar = ch ? (ch.avatar || defaultAvatar(ch.name)) : defaultAvatar('?');
-                const typingEl = makeTypingEl(charAvatar);
+
+                const typingEl = makeTypingEl(currentAvatar);
                 msgEl.appendChild(typingEl);
                 msgEl.scrollTop = msgEl.scrollHeight;
 
                 const delay = spd.typingMin + Math.random() * (spd.typingMax - spd.typingMin);
                 setTimeout(() => {
                     typingEl.remove();
-                    const reply = _pickCardForCharacter(conv, charId, recentTexts || '');
-                    const msg = { id: genId(), role: 'card', content: reply, timestamp: Date.now(), characterId: charId };
+                    const reply = _pickCardForCharacter(conv, currentCharId, recentTexts || '');
+                    const msg = { id: genId(), role: 'card', content: reply, timestamp: Date.now(), characterId: currentCharId };
                     conv.messages.push(msg);
                     conv.updatedAt = Date.now();
-                    appendCardMessage(msgEl, conv, reply, charId);
-                    ci++;
-                    if (ci < charIds.length) {
+                    appendCardMessage(msgEl, conv, reply, currentCharId);
+                    charMsgLeft--;
+
+                    if (charMsgLeft > 0 || ci < charIds.length) {
                         const gap = spd.gapMin + Math.random() * (spd.gapMax - spd.gapMin);
-                        setTimeout(nextChar, gap);
+                        setTimeout(nextGroupMsg, gap);
                     } else {
                         if (typeof saveData === 'function') saveData();
                         if (typeof onDone === 'function') onDone();
                     }
                 }, delay);
             }
-            nextChar();
+            nextGroupMsg();
         } else {
             // 单角色：原有逻辑
             const avatarSrc = conv.avatar || defaultAvatar(conv.name);
@@ -1287,7 +1490,9 @@ function setupCardChat() {
 
     function appendCardMessage(msgEl, conv, text, characterId) {
         const isGroup = (conv.characterIds || []).length > 0;
-        const isNightMode = getCardChatTheme().nightMode;
+        const nightMode = !!getCardChatTheme().nightMode;
+        const showName = !!conv.showRoleName;
+        const autoText = !!conv.autoTextColor;
         let avatarSrc, charNameHtml = '', bubbleStyle = '';
         if (isGroup && characterId) {
             const ch = getCharacterById(characterId);
@@ -1295,12 +1500,16 @@ function setupCardChat() {
             if (ch) {
                 charNameHtml = `<div class="cc-msg-char-name" style="font-size:11px;color:#999;padding-left:44px;margin-bottom:2px;">${esc(ch.name)}</div>`;
                 if (ch.bubbleColor) {
-                    const color = isNightMode ? _adjustColorForNight(ch.bubbleColor) : ch.bubbleColor;
-                    bubbleStyle = ` style="background:${color}"`;
+                    const effectiveBg = nightMode ? (_ccNightBubbleColor(ch.bubbleColor) || ch.bubbleColor) : ch.bubbleColor;
+                    const tc = autoText ? _ccGetTintedText(effectiveBg) : (nightMode ? '#ccc' : '');
+                    bubbleStyle = ` style="background:${effectiveBg};${tc ? 'color:' + tc + ';' : ''}"`;
                 }
             }
         } else {
             avatarSrc = esc(conv.avatar || defaultAvatar(conv.name));
+            if (showName) {
+                charNameHtml = `<div class="cc-msg-char-name" style="font-size:11px;color:#999;padding-left:44px;margin-bottom:2px;">${esc(conv.name)}</div>`;
+            }
         }
         const ts = Date.now();
         const wrapper = document.createElement('div');
@@ -1474,10 +1683,20 @@ function setupCardChat() {
         if (scored[0].score > 0) {
             const topN = scored.slice(0, Math.min(5, scored.length)).filter(s => s.score > 0);
             chosen = topN[Math.floor(Math.random() * topN.length)];
+            // 命中率统计
+            if (!conv._crossStats) conv._crossStats = { total: 0, kwHit: 0, modeHits: {} };
+            conv._crossStats.total++;
+            conv._crossStats.kwHit++;
+            conv._crossStats.modeHits[chosen.modeId] = (conv._crossStats.modeHits[chosen.modeId] || 0) + 1;
         } else {
+            // 无关键词命中 → 退回 activeMode 随机选
             const fallback = pool.filter(c => c.modeId === conv.activeMode);
             const fallbackPool = fallback.length > 0 ? fallback : pool;
             chosen = fallbackPool[Math.floor(Math.random() * fallbackPool.length)];
+            // 命中率统计
+            if (!conv._crossStats) conv._crossStats = { total: 0, kwHit: 0, modeHits: {} };
+            conv._crossStats.total++;
+            conv._crossStats.modeHits[chosen.modeId] = (conv._crossStats.modeHits[chosen.modeId] || 0) + 1;
         }
 
         const chosenKey = `${chosen.modeId}:${chosen.idx}`;
@@ -3949,22 +4168,57 @@ function setupCardChat() {
         const avatar = conv.avatar || defaultAvatar(conv.name);
 
         const tmp = document.createElement('div');
-        tmp.style.cssText = 'position:absolute;top:-9999px;left:0;width:400px;padding:20px;display:flex;flex-direction:column;background:#f5f5f5;';
+        tmp.style.cssText = 'position:absolute;top:-9999px;left:0;width:400px;padding:20px;display:flex;flex-direction:column;background:#f5f5f5;overflow:hidden;z-index:1;';
 
-        const theme = getCardChatTheme();
-        const convTheme = conv.theme || {};
-        const bg = convTheme.wallpaper || theme.wallpaper;
+        // 合并主题（对话独立主题 + 全局 nightMode 继承）
+        const globalTheme = getCardChatTheme();
+        const convTheme = getConvTheme(conv);
+        const theme = convTheme
+            ? Object.assign({}, convTheme, { nightMode: globalTheme.nightMode })
+            : globalTheme;
+
+        // 应用壁纸背景（支持渐变和图片）
+        const bg = theme.wallpaper;
         if (bg) {
-            tmp.style.backgroundImage = `url(${bg})`;
-            tmp.style.backgroundSize = 'cover';
-            tmp.style.backgroundPosition = 'center';
+            const isGrad = bg.startsWith('linear-gradient');
+            tmp.style.backgroundImage = isGrad ? bg : `url(${bg})`;
+            tmp.style.backgroundSize = isGrad ? 'cover' : `${theme.wpScale || 100}%`;
+            tmp.style.backgroundPosition = isGrad ? 'center' : `${theme.wpX || 50}% ${theme.wpY || 50}%`;
+            tmp.style.backgroundRepeat = 'no-repeat';
         }
-        if (theme.nightMode) tmp.style.background = '#1a1a2e';
+
+        // 夜间模式：叠暗色而非覆盖壁纸
+        if (theme.nightMode && !bg) {
+            tmp.style.background = '#1a1a2e';
+        } else if (theme.nightMode) {
+            const nightOverlay = document.createElement('div');
+            nightOverlay.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(12,12,26,0.75);pointer-events:none;';
+            tmp.appendChild(nightOverlay);
+        }
+
+        // 染色叠层
+        const oColor = theme.overlayColor || '';
+        const oAlpha = theme.overlayAlpha || 0;
+        const oGrad = theme.overlayGradient || null;
+        const oBlend = theme.overlayBlendMode || 'normal';
+        if ((oGrad || oColor) && oAlpha > 0) {
+            const overlay = document.createElement('div');
+            overlay.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;';
+            if (oGrad) {
+                overlay.style.background = `linear-gradient(${oGrad.angle}deg,${oGrad.c1},${oGrad.c2})`;
+                overlay.style.opacity = oAlpha;
+            } else {
+                const rgb = _hexToRgb(oColor);
+                overlay.style.background = `rgba(${rgb.r},${rgb.g},${rgb.b},${oAlpha})`;
+            }
+            overlay.style.mixBlendMode = oBlend;
+            tmp.appendChild(overlay);
+        }
 
         selectedMsgs.forEach(msg => {
             const isSent = msg.role === 'user';
             const wrapper = document.createElement('div');
-            wrapper.style.cssText = `display:flex;flex-direction:column;align-items:${isSent ? 'flex-end' : 'flex-start'};margin-bottom:12px;`;
+            wrapper.style.cssText = `display:flex;flex-direction:column;align-items:${isSent ? 'flex-end' : 'flex-start'};margin-bottom:12px;position:relative;z-index:1;`;
 
             const row = document.createElement('div');
             row.style.cssText = `display:flex;align-items:flex-end;gap:8px;max-width:85%;${isSent ? 'flex-direction:row-reverse;' : ''}`;
@@ -3976,18 +4230,6 @@ function setupCardChat() {
                 row.appendChild(img);
             }
 
-            const bubble = document.createElement('div');
-            let bubbleBg = isSent ? '#4a9eff' : '#fff';
-            let bubbleColor = isSent ? '#fff' : '#333';
-            if (theme.nightMode) { bubbleBg = isSent ? '#4a9eff' : '#2a2a4a'; bubbleColor = isSent ? '#fff' : '#e0e0e0'; }
-            if (isSent && msg.userRoleId) {
-                const ur = getUserRoleById(msg.userRoleId);
-                if (ur && ur.bubbleColor) bubbleBg = ur.bubbleColor;
-            }
-            bubble.style.cssText = `padding:10px 14px;border-radius:16px;font-size:14px;line-height:1.5;word-break:break-word;background:${bubbleBg};color:${bubbleColor};`;
-            bubble.textContent = msg.content;
-            row.appendChild(bubble);
-
             if (isSent && msg.userRoleId) {
                 const ur = getUserRoleById(msg.userRoleId);
                 if (ur && ur.avatar) {
@@ -3998,6 +4240,34 @@ function setupCardChat() {
                 }
             }
 
+            const bubble = document.createElement('div');
+            let bubbleBg = isSent ? '#cee4f1' : '#fff';
+            let bubbleColor = isSent ? '#333' : '#333';
+            if (theme.nightMode) { bubbleBg = isSent ? 'rgba(40,58,85,0.90)' : 'rgba(30,30,52,0.92)'; bubbleColor = isSent ? '#dde8f5' : '#ccc'; }
+            if (isSent && msg.userRoleId) {
+                const ur = getUserRoleById(msg.userRoleId);
+                if (ur && ur.bubbleColor) {
+                    bubbleBg = theme.nightMode ? (_ccNightBubbleColor(ur.bubbleColor) || ur.bubbleColor) : ur.bubbleColor;
+                    bubbleColor = conv.autoTextColor ? (_ccGetTintedText(bubbleBg) || bubbleColor) : (theme.nightMode ? '#ccc' : bubbleColor);
+                }
+            }
+            if (!isSent && (conv.characterIds || []).length > 0 && msg.characterId) {
+                const ch = getCharacterById(msg.characterId);
+                if (ch && ch.bubbleColor) {
+                    bubbleBg = theme.nightMode ? (_ccNightBubbleColor(ch.bubbleColor) || ch.bubbleColor) : ch.bubbleColor;
+                    bubbleColor = conv.autoTextColor ? (_ccGetTintedText(bubbleBg) || bubbleColor) : (theme.nightMode ? '#ccc' : bubbleColor);
+                }
+            }
+            // autoTextColor 无自定义气泡色时，用默认色计算
+            if (conv.autoTextColor && bubbleBg === (isSent ? '#cee4f1' : '#fff')) {
+                const tc = _ccGetTintedText(bubbleBg);
+                if (tc) bubbleColor = tc;
+            }
+            bubble.style.cssText = `padding:10px 14px;border-radius:16px;font-size:14px;line-height:1.5;word-break:break-word;background:${bubbleBg};color:${bubbleColor};`;
+            bubble.textContent = msg.content;
+            row.appendChild(bubble);
+
+            // 显示预览弹窗
             wrapper.appendChild(row);
 
             const time = document.createElement('div');
@@ -4190,6 +4460,28 @@ function setupCardChat() {
             _applyMinimalMode(conv);
             if (typeof showToast === 'function') showToast(conv.minimalMode ? '极简模式已开启' : '极简模式已关闭');
         });
+        document.getElementById('cc-room-menu-showname')?.addEventListener('click', () => {
+            closeMenus();
+            const data = getData();
+            const conv = data.conversations.find(c => c.id === _currentConvId);
+            if (!conv) return;
+            conv.showRoleName = !conv.showRoleName;
+            if (typeof saveData === 'function') saveData();
+            _updateShowNameMenuLabel();
+            renderMessages(conv);
+            if (typeof showToast === 'function') showToast(conv.showRoleName ? '角色名已显示' : '角色名已隐藏');
+        });
+        document.getElementById('cc-room-menu-autotext')?.addEventListener('click', () => {
+            closeMenus();
+            const data = getData();
+            const conv = data.conversations.find(c => c.id === _currentConvId);
+            if (!conv) return;
+            conv.autoTextColor = !conv.autoTextColor;
+            if (typeof saveData === 'function') saveData();
+            _updateAutoTextMenuLabel();
+            renderMessages(conv);
+            if (typeof showToast === 'function') showToast(conv.autoTextColor ? '文字颜色已跟随底色' : '文字颜色已恢复默认');
+        });
         document.getElementById('cc-room-menu-capture')?.addEventListener('click', () => { closeMenus(); _ccEnterMultiSelect(); });
         document.getElementById('cc-capture-gen')?.addEventListener('click', () => _ccGenerateCapture());
         document.getElementById('cc-capture-cancel')?.addEventListener('click', () => _ccExitMultiSelect());
@@ -4210,10 +4502,35 @@ function setupCardChat() {
             if (!conv) return;
             conv.crossStyleEnabled = !conv.crossStyleEnabled;
             if (conv.crossStyleEnabled) { conv._lastCrossMode = null; conv._crossModeStickCount = 0; }
+
+            // 开启时清空惯性状态
             if (typeof saveData === 'function') saveData();
             _updateCrossStyleMenuLabel();
-            openConversation(_currentConvId);
+            openConversation(_currentConvId); // 刷新 indicator
             if (typeof showToast === 'function') showToast(conv.crossStyleEnabled ? '跨风格回复已开启' : '跨风格回复已关闭');
+        });
+
+        document.getElementById('cc-room-menu-cross-stats')?.addEventListener('click', () => {
+            closeMenus();
+            const data = getData();
+            const conv = data.conversations.find(c => c.id === _currentConvId);
+            if (!conv) return;
+            const s = conv._crossStats || { total: 0, kwHit: 0, modeHits: {} };
+            if (s.total === 0) {
+                if (typeof showToast === 'function') showToast('暂无跨风格统计数据');
+                return;
+            }
+            const hitRate = Math.round((s.kwHit / s.total) * 100);
+            let modeLines = '';
+            conv.modes.forEach(m => {
+                const cnt = s.modeHits[m.id] || 0;
+                if (cnt > 0) {
+                    const pct = Math.round((cnt / s.total) * 100);
+                    modeLines += `${m.name}: ${cnt} 次 (${pct}%)\n`;
+                }
+            });
+            const msg = `跨风格命中统计\n\n总回复: ${s.total} 条\n关键词命中: ${s.kwHit} 次 (${hitRate}%)\n随机回退: ${s.total - s.kwHit} 次\n\n模式分布:\n${modeLines || '(无数据)'}`;
+            alert(msg);
         });
 
         document.getElementById('cc-room-menu-echo')?.addEventListener('click', () => {

@@ -953,4 +953,138 @@ body {
 }
 .cc-night .cc-capture-bar { background: rgba(74,158,255,0.06); border-top-color: rgba(255,255,255,0.06); }
 .cc-night .cc-capture-bar button#cc-capture-cancel { background: #2a2a4a; color: #888; }
+
+/* ===== 消息编辑功能样式 ===== */
+.cc-edit-modal-overlay {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.5); z-index: 10000;
+    display: flex; align-items: center; justify-content: center;
+    padding: 20px;
+}
+
+.cc-edit-modal {
+    background: #fff; border-radius: 16px;
+    padding: 20px; max-width: 400px; width: 100%;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+    position: relative;
+}
+
+.cc-edit-modal h3 {
+    margin: 0 0 16px; font-size: 18px; color: #333;
+}
+
+.cc-modal-close {
+    position: absolute; top: 12px; right: 12px;
+    width: 32px; height: 32px; border: none;
+    background: rgba(0,0,0,0.05); border-radius: 50%;
+    font-size: 20px; color: #666; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+}
+
+.cc-form-group {
+    margin-bottom: 16px;
+}
+
+.cc-form-label {
+    display: block; margin-bottom: 6px;
+    font-size: 13px; color: #666; font-weight: 500;
+}
+
+.cc-form-textarea {
+    width: 100%; min-height: 100px; padding: 10px;
+    border: 1px solid rgba(0,0,0,0.1); border-radius: 8px;
+    font-size: 14px; resize: vertical; font-family: inherit;
+}
+
+.cc-edit-msg-row {
+    display: flex; align-items: center; gap: 10px;
+    margin-bottom: 12px;
+}
+
+.cc-edit-msg-row label {
+    font-size: 13px; color: #666; min-width: 50px;
+}
+
+.cc-edit-msg-row input, .cc-edit-msg-row select {
+    flex: 1; padding: 8px; border: 1px solid rgba(0,0,0,0.1);
+    border-radius: 6px; font-size: 14px;
+}
+
+.cc-btn-primary {
+    width: 100%; padding: 12px; margin-bottom: 8px;
+    background: #4a9eff; color: #fff; border: none;
+    border-radius: 8px; font-size: 14px; font-weight: 600;
+    cursor: pointer;
+}
+
+.cc-btn-danger {
+    width: 100%; padding: 12px;
+    background: rgba(231,76,60,0.1); color: #e74c3c; border: none;
+    border-radius: 8px; font-size: 14px; font-weight: 600;
+    cursor: pointer;
+}
+
+.cc-msg-action-bar {
+    display: flex; gap: 6px; padding: 8px;
+    background: rgba(255,255,255,0.95); border-radius: 12px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+    position: absolute; bottom: -50px; left: 50%;
+    transform: translateX(-50%);
+    z-index: 100;
+}
+
+.cc-action-btn {
+    width: 36px; height: 36px; border: none;
+    background: rgba(0,0,0,0.05); border-radius: 8px;
+    font-size: 16px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+}
+
+.cc-action-btn:active {
+    background: rgba(0,0,0,0.1);
+}
+
+.cc-action-delete {
+    background: rgba(231,76,60,0.1);
+}
+
+.cc-msg-wrapper {
+    position: relative;
+}
+
+/* 夜间模式适配 */
+.cc-night .cc-edit-modal {
+    background: #2a2a4a; color: #ddd;
+}
+
+.cc-night .cc-edit-modal h3 {
+    color: #ddd;
+}
+
+.cc-night .cc-modal-close {
+    background: rgba(255,255,255,0.05); color: #aaa;
+}
+
+.cc-night .cc-form-label {
+    color: #aaa;
+}
+
+.cc-night .cc-form-textarea {
+    background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.1);
+    color: #ddd;
+}
+
+.cc-night .cc-edit-msg-row input,
+.cc-night .cc-edit-msg-row select {
+    background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.1);
+    color: #ddd;
+}
+
+.cc-night .cc-msg-action-bar {
+    background: rgba(42,42,74,0.95);
+}
+
+.cc-night .cc-action-btn {
+    background: rgba(255,255,255,0.05);
+}
 .cc-night .cc-multi-select .cc-msg-wrapper.cc-msg-selected { background: rgba(74,158,255,0.12); }
